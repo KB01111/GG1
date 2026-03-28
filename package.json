@@ -38,11 +38,11 @@
     "chai": "^4.4.1",
     "chalk": "^4.1.1",
     "cross-env": "^7.0.3",
-    "electron": "^28.2.3",
+    "electron": "^41.1.0",
     "electron-background": "^1.0.0",
-    "electron-builder": "^24.13.3",
+    "electron-builder": "^26.8.1",
     "electronmon": "^2.0.2",
-    "eslint": "^5.16.0",
+    "eslint": "^10.1.0",
     "mocha": "^10.3.0",
     "puptron": "0.0.7",
     "rootrequire": "^1.0.0",
@@ -55,7 +55,7 @@
     "app-data-folder": "^1.0.0",
     "callsites": "^3.1.0",
     "htm": "^3.1.1",
-    "lodash": "^4.17.21",
+    "lodash": "^4.17.23",
     "preact": "^10.19.5",
     "toastify-js": "^1.12.0"
   }
