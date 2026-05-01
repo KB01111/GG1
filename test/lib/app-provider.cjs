@@ -8,7 +8,7 @@ const pkg = require('../../package.json');
 
 const distExecPath = {
   win32: path.resolve(root, 'dist-packages/win-unpacked', `${pkg.productName}.exe`),
-  linux: path.resolve(root, 'dist-packages/linux-unpacked', pkg.productName),
+  linux: path.resolve(root, 'dist-packages/linux-unpacked', pkg.name),
   darwin: path.resolve(root, 'dist-packages/mac', `${pkg.productName}.app`)
 }[process.platform];
 

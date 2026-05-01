@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, shell } from 'electron';
 import started from 'electron-squirrel-startup';
 import { AiService } from './ai-service.js';
@@ -10,7 +9,6 @@ import { SafeActionsService } from './safe-actions.js';
 import { ScannerService } from './scanner-service.js';
 import { EventEmitter } from 'node:events';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 
 if (started) {
@@ -58,7 +56,7 @@ function createWindow(): void {
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL).catch((error) => console.error(error));
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html')).catch((error) => console.error(error));
+    mainWindow.loadFile(path.join(app.getAppPath(), 'dist', 'renderer', 'index.html')).catch((error) => console.error(error));
   }
 }
 

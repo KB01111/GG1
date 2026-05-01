@@ -11,6 +11,7 @@ export default defineConfig({
       '@shared': resolve(__dirname, 'src/shared')
     }
   },
+  base: './',
   build: {
     outDir: 'dist/renderer',
     emptyOutDir: true
