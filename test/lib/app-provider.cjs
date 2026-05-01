@@ -1,5 +1,6 @@
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const fs = require('node:fs');
 const { _electron: electron } = require('playwright-core');
 
 const root = path.resolve(__dirname, '../..');
@@ -54,7 +55,7 @@ module.exports = {
     };
 
     if (environment === 'production') {
-      launchOptions.executablePath = distExecPath;
+      launchOptions.executablePath = fs.existsSync(distExecPath) ? distExecPath : undefined;
     } else {
       viteProcess = spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'dev'], {
         cwd: root,
