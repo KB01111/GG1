@@ -7,7 +7,7 @@ module.exports = {
   productName,
   buildVersion: version,
   directories: {
-    output: 'dist-packages'
+    output: 'dist'
   },
   files: [
     'dist/**',
