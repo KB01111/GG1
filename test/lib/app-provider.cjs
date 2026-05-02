@@ -2,6 +2,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const { _electron: electron } = require('playwright-core');
+const treeKill = require('tree-kill');
 
 const root = path.resolve(__dirname, '../..');
 const environment = process.env.TEST_UNPACKED ? 'production' : 'development';
@@ -78,7 +79,12 @@ module.exports = {
       electronApp = undefined;
     }
     if (viteProcess) {
-      viteProcess.kill();
+      await new Promise((resolve) => {
+        treeKill(viteProcess.pid, (err) => {
+          if (err) console.error('Error killing vite process tree:', err);
+          resolve();
+        });
+      });
       viteProcess = undefined;
     }
   }
