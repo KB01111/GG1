@@ -56,7 +56,10 @@ module.exports = {
     };
 
     if (environment === 'production') {
-      launchOptions.executablePath = fs.existsSync(distExecPath) ? distExecPath : undefined;
+      if (!fs.existsSync(distExecPath)) {
+        throw new Error(`Production executable not found at: ${distExecPath}. Run 'npm run package:dir' first.`);
+      }
+      launchOptions.executablePath = distExecPath;
     } else {
       viteProcess = spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'dev'], {
         cwd: root,
