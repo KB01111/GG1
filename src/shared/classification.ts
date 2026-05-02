@@ -77,7 +77,12 @@ export function classifyItem(item: FileSystemItem, options: ClassificationOption
     };
   }
 
-  if (OFFLOAD_EXTENSIONS.has(extension) || [...TARGET_FOLDER_NAMES].some((folderName) => pathLower.includes(folderName))) {
+  const pathSegments = pathLower.split(/[\\/]/).filter(Boolean);
+  const hasTargetFolder = pathSegments.some((segment) =>
+    TARGET_FOLDER_NAMES.has(segment)
+  );
+
+  if (OFFLOAD_EXTENSIONS.has(extension) || hasTargetFolder) {
     ruleIds.push('large-user-content');
     return {
       itemId: item.id,
