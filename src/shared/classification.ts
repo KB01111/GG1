@@ -55,7 +55,10 @@ export function classifyItem(item: FileSystemItem, options: ClassificationOption
     };
   }
 
-  if (LOG_EXTENSIONS.has(extension) || name === 'logs' || pathLower.includes('\\temp') || pathLower.includes('/temp')) {
+  const pathSegments = pathLower.split(/[\\/]+/).filter(Boolean);
+  const hasTempSegment = pathSegments.includes('temp');
+
+  if (LOG_EXTENSIONS.has(extension) || name === 'logs' || hasTempSegment) {
     ruleIds.push('temporary-or-log-file');
     return {
       itemId: item.id,
@@ -77,10 +80,7 @@ export function classifyItem(item: FileSystemItem, options: ClassificationOption
     };
   }
 
-  const pathSegments = pathLower.split(/[\\/]/).filter(Boolean);
-  const hasTargetFolder = pathSegments.some((segment) =>
-    TARGET_FOLDER_NAMES.has(segment)
-  );
+  const hasTargetFolder = Array.from(TARGET_FOLDER_NAMES).some((folder: string) => pathSegments.includes(folder));
 
   if (OFFLOAD_EXTENSIONS.has(extension) || hasTargetFolder) {
     ruleIds.push('large-user-content');

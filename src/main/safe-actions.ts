@@ -52,7 +52,18 @@ export class SafeActionsService {
         await this.manifest.update(entry.id, { actionTaken: 'quarantined', localActionAt: new Date().toISOString(), restorePath: destination });
         results.push({ entryId: entry.id, action: 'quarantined', path: destination, success: true, message: 'Moved to app quarantine' });
       } catch (error) {
-        results.push({ entryId: entry.id, action: 'quarantined', path: entry.originalPath, success: false, message: error instanceof Error ? error.message : 'Quarantine failed' });
+        if ((error as NodeJS.ErrnoException).code === 'EXDEV') {
+          try {
+            await fs.copyFile(entry.originalPath, destination);
+            await fs.unlink(entry.originalPath);
+            await this.manifest.update(entry.id, { actionTaken: 'quarantined', localActionAt: new Date().toISOString(), restorePath: destination });
+            results.push({ entryId: entry.id, action: 'quarantined', path: destination, success: true, message: 'Moved to app quarantine' });
+          } catch (copyError) {
+            results.push({ entryId: entry.id, action: 'quarantined', path: entry.originalPath, success: false, message: copyError instanceof Error ? copyError.message : 'Quarantine failed' });
+          }
+        } else {
+          results.push({ entryId: entry.id, action: 'quarantined', path: entry.originalPath, success: false, message: error instanceof Error ? error.message : 'Quarantine failed' });
+        }
       }
     }
 
@@ -90,6 +101,18 @@ export class SafeActionsService {
   }
 
   async restore(entry: ManifestEntry, destinationPath: string): Promise<RestoreResult> {
+    const protectedMatch = isProtectedPath(destinationPath);
+    if (protectedMatch.protected) {
+      return { entryId: entry.id, destinationPath, success: false, message: `Cannot restore to protected path: ${protectedMatch.reason}` };
+    }
+
+    try {
+      await fs.access(destinationPath);
+      return { entryId: entry.id, destinationPath, success: false, message: 'Destination file already exists. Remove it or provide an explicit overwrite flag.' };
+    } catch {
+      // File doesn't exist, proceed
+    }
+
     try {
       await this.drive.downloadFile(entry, destinationPath, () => undefined);
       await this.manifest.update(entry.id, { actionTaken: 'restored', restorePath: destinationPath, localActionAt: new Date().toISOString() });

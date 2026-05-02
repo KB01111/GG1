@@ -39,6 +39,7 @@ const normalizeForPolicy = (inputPath: string): string => inputPath.replace(/\//
 export function isProtectedPath(inputPath: string): ProtectedPathMatch {
   const normalized = normalizeForPolicy(path.resolve(inputPath));
   const home = normalizeForPolicy(os.homedir());
+  const segments = normalized.split(/[\\/]+/).filter(Boolean);
 
   for (const prefix of WINDOWS_SYSTEM_PREFIXES) {
     if (normalized === prefix || normalized.startsWith(`${prefix}\\`)) {
@@ -46,14 +47,32 @@ export function isProtectedPath(inputPath: string): ProtectedPathMatch {
     }
   }
 
-  for (const segment of SENSITIVE_SEGMENTS) {
-    if (normalized.includes(segment)) {
+  for (const sensitiveSegment of SENSITIVE_SEGMENTS) {
+    const sensitiveSegments = sensitiveSegment.split(/[\\/]+/).filter(Boolean);
+    let match = true;
+    for (let i = 0; i < sensitiveSegments.length; i++) {
+      const found = segments.includes(sensitiveSegments[i]);
+      if (!found) {
+        match = false;
+        break;
+      }
+    }
+    if (match) {
       return { protected: true, reason: 'Browser profile, credential store, or secret-bearing folder' };
     }
   }
 
-  for (const segment of ACTIVE_CONFIG_SEGMENTS) {
-    if (normalized.includes(segment) && !normalized.includes('\\temp')) {
+  for (const configSegment of ACTIVE_CONFIG_SEGMENTS) {
+    const configSegments = configSegment.split(/[\\/]+/).filter(Boolean);
+    let match = true;
+    for (let i = 0; i < configSegments.length; i++) {
+      const found = segments.includes(configSegments[i]);
+      if (!found) {
+        match = false;
+        break;
+      }
+    }
+    if (match && !segments.includes('temp')) {
       return { protected: true, reason: 'Active application configuration folder' };
     }
   }

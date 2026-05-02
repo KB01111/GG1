@@ -17,9 +17,25 @@ if (started) {
 
 let mainWindow: BrowserWindow | undefined;
 
+const userDataPath = app.getPath('userData');
+const manifest = new ManifestStore(userDataPath);
+const drive = new DriveService(userDataPath);
+const services = {
+  scanner: new ScannerService(),
+  drive,
+  manifest,
+  safeActions: new SafeActionsService(manifest, drive, userDataPath),
+  ai: new AiService(),
+  events: new EventEmitter()
+};
+
+function setMainWindow(window: BrowserWindow): void {
+  mainWindow = window;
+}
+
 function createWindow(): void {
   const preload = path.join(__dirname, 'preload.js');
-  mainWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     width: 1280,
     height: 860,
     minWidth: 1080,
@@ -30,38 +46,36 @@ function createWindow(): void {
       preload,
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false
+      sandbox: true
     }
   });
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url).catch(() => undefined);
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        shell.openExternal(url).catch(() => undefined);
+      }
+    } catch {
+      // Invalid URL, deny
+    }
     return { action: 'deny' };
   });
 
-  const userDataPath = app.getPath('userData');
-  const manifest = new ManifestStore(userDataPath);
-  const drive = new DriveService(userDataPath);
-  const services = {
-    scanner: new ScannerService(),
-    drive,
-    manifest,
-    safeActions: new SafeActionsService(manifest, drive, userDataPath),
-    ai: new AiService(),
-    events: new EventEmitter()
-  };
-
-  registerIpcHandlers(mainWindow, services);
+  setMainWindow(window);
 
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL).catch((error) => console.error(error));
+    window.loadURL(process.env.VITE_DEV_SERVER_URL).catch((error) => console.error(error));
   } else {
-    mainWindow.loadFile(path.join(app.getAppPath(), 'dist', 'renderer', 'index.html')).catch((error) => console.error(error));
+    window.loadFile(path.join(app.getAppPath(), 'dist', 'renderer', 'index.html')).catch((error) => console.error(error));
   }
 }
 
 app.whenReady().then(() => {
   createWindow();
+  if (mainWindow) {
+    registerIpcHandlers(mainWindow, services);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

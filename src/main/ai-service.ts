@@ -19,51 +19,72 @@ export class CloudAiClassifier implements AiClassifier {
   constructor(private readonly apiKey: string, private readonly baseUrl = process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1') {}
 
   async classify(batch: AiClassificationInput[]): Promise<AiClassificationResult[]> {
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${this.apiKey}`,
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'system',
-            content: 'Classify storage-cleanup candidates using metadata only. Never recommend direct deletion. Return JSON: {"results":[{"itemId":"","kind":"safe_delete|safe_offload|review_manually|protected_do_not_touch","riskScore":0,"explanation":""}]}.'
-          },
-          {
-            role: 'user',
-            content: JSON.stringify(batch.map(({ item, baseline }) => ({
-              itemId: item.id,
-              path: item.path,
-              kind: item.kind,
-              size: item.size,
-              extension: item.extension,
-              modifiedAt: item.modifiedAt,
-              accessedAt: item.accessedAt,
-              depth: item.depth,
-              protected: item.protected,
-              baseline
-            })))
-          }
-        ]
-      })
-    });
+    const timeout = Number(process.env.OPENAI_TIMEOUT_MS) || 30000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
 
-    if (!response.ok) {
-      throw new Error(`Cloud AI request failed: ${response.status}`);
+    try {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${this.apiKey}`,
+          'content-type': 'application/json'
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+          response_format: { type: 'json_object' },
+          messages: [
+            {
+              role: 'system',
+              content: 'Classify storage-cleanup candidates using metadata only. Never recommend direct deletion. Return JSON: {"results":[{"itemId":"","kind":"safe_delete|safe_offload|review_manually|protected_do_not_touch","riskScore":0,"explanation":""}]}.'
+            },
+            {
+              role: 'user',
+              content: JSON.stringify(batch.map(({ item, baseline }) => {
+                const basename = item.path.split(/[\\/]/).pop() ?? item.name;
+                const now = Date.now();
+                const modifiedAge = item.modifiedAt ? now - new Date(item.modifiedAt).getTime() : undefined;
+                const accessedAge = item.accessedAt ? now - new Date(item.accessedAt).getTime() : undefined;
+
+                return {
+                  itemId: item.id,
+                  basename,
+                  kind: item.kind,
+                  size: item.size,
+                  extension: item.extension,
+                  lastModifiedAge: modifiedAge,
+                  lastAccessedAge: accessedAge,
+                  depth: item.depth,
+                  protected: item.protected,
+                  baseline
+                };
+              }))
+            }
+          ]
+        })
+      });
+      clearTimeout(timer);
+
+      if (!response.ok) {
+        throw new Error(`Cloud AI request failed: ${response.status}`);
+      }
+
+      const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+      const content = payload.choices?.[0]?.message?.content;
+      if (!content) {
+        throw new Error('Cloud AI returned an empty response');
+      }
+
+      const parsed = JSON.parse(content) as { results?: AiClassificationResult[] };
+      return parsed.results ?? [];
+    } catch (error) {
+      clearTimeout(timer);
+      if (error instanceof Error && (error.name === 'AbortError' || controller.signal.aborted)) {
+        throw new Error(`Cloud AI request timed out after ${timeout}ms`);
+      }
+      throw error;
     }
-
-    const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-    const content = payload.choices?.[0]?.message?.content;
-    if (!content) {
-      throw new Error('Cloud AI returned an empty response');
-    }
-
-    const parsed = JSON.parse(content) as { results?: AiClassificationResult[] };
-    return parsed.results ?? [];
   }
 }
 

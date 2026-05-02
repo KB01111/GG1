@@ -1,4 +1,7 @@
 export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0 || Number.isNaN(bytes)) {
+    return '0 B';
+  }
   if (bytes === 0) {
     return '0 B';
   }
@@ -11,5 +14,9 @@ export function formatDate(value?: string): string {
   if (!value) {
     return 'Unknown';
   }
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+  const date = new Date(value);
+  if (isNaN(date.getTime())) {
+    return 'Unknown';
+  }
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }

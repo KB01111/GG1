@@ -15,8 +15,11 @@ export class ManifestStore {
       const raw = await fs.readFile(this.manifestPath, 'utf8');
       const parsed = JSON.parse(raw) as ManifestEntry[];
       return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+        return [];
+      }
+      throw e;
     }
   }
 
@@ -35,12 +38,16 @@ export class ManifestStore {
 
   private async write(update: (entries: ManifestEntry[]) => Promise<ManifestEntry[]> | ManifestEntry[]): Promise<void> {
     this.writeQueue = this.writeQueue.then(async () => {
-      const entries = await this.list();
-      const nextEntries = await update(entries);
-      await fs.mkdir(path.dirname(this.manifestPath), { recursive: true });
-      const tempPath = `${this.manifestPath}.tmp`;
-      await fs.writeFile(tempPath, JSON.stringify(nextEntries, null, 2));
-      await fs.rename(tempPath, this.manifestPath);
+      try {
+        const entries = await this.list();
+        const nextEntries = await update(entries);
+        await fs.mkdir(path.dirname(this.manifestPath), { recursive: true });
+        const tempPath = `${this.manifestPath}.tmp`;
+        await fs.writeFile(tempPath, JSON.stringify(nextEntries, null, 2));
+        await fs.rename(tempPath, this.manifestPath);
+      } catch (error) {
+        console.error('Manifest write failed:', error);
+      }
     });
     await this.writeQueue;
   }

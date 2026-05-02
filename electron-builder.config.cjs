@@ -1,4 +1,4 @@
-const { productName, appId, version } = require('./package.json');
+const { productName, appId, version, main } = require('./package.json');
 
 const fileName = productName.replace(/\s/g, '');
 
@@ -15,7 +15,7 @@ module.exports = {
     'assets/**'
   ],
   extraMetadata: {
-    main: 'dist/main/main/main.js'
+    main
   },
   win: {
     target: ['nsis', 'portable']

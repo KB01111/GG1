@@ -44,7 +44,7 @@
     const removeUploadListener = window.storageCleaner.onUploadProgress((progress) => {
       uploadProgress = progress;
     });
-    refreshManifest();
+    refreshManifest().catch(showError);
     window.storageCleaner.getDriveAuthState().then((state) => authState = state).catch(showError);
     return () => {
       removeScanListener();
@@ -195,6 +195,19 @@
       busy = false;
     }
   }
+
+  async function restoreEntry(entry: ManifestEntry): Promise<void> {
+    try {
+      const result = await window.storageCleaner.restore(entry.driveFileId, entry.originalPath);
+      message = result.message;
+      if (result.success) {
+        await refreshManifest();
+      }
+    } catch (error) {
+      console.error('Restore failed:', error);
+      showError(error);
+    }
+  }
 </script>
 
 <main class="shell">
@@ -301,7 +314,7 @@
           <span>{entry.driveFileId}</span>
           <span>{formatDate(entry.uploadedAt)}</span>
           <span><Badge tone={entry.verification.status === 'verified' ? 'green' : 'yellow'}>{entry.actionTaken}</Badge></span>
-          <span><RotateCcw size={14} /> restore via manifest</span>
+          <span on:click={() => restoreEntry(entry)} style="cursor: pointer;"><RotateCcw size={14} /> restore via manifest</span>
         </label>
       {:else}
         <div class="empty">No verified uploads in the local manifest.</div>

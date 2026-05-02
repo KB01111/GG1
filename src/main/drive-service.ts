@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import http from 'node:http';
@@ -68,21 +68,32 @@ export class DriveService {
       throw new Error('Unable to allocate OAuth callback port');
     }
 
+    const nonce = randomBytes(32).toString('hex');
     const redirectUri = `http://127.0.0.1:${address.port}/oauth2callback`;
     this.configureClient(config, redirectUri);
     const authUrl = this.oauthClient.generateAuthUrl({
       access_type: 'offline',
       prompt: 'consent',
-      scope: [DRIVE_SCOPE]
+      scope: [DRIVE_SCOPE],
+      state: nonce
     });
 
     const callbackPromise = new Promise<AuthState>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        server.close();
+        reject(new Error('OAuth flow timed out after 15 minutes'));
+      }, 15 * 60 * 1000);
+
       server.on('request', async (request, response) => {
         try {
           if (!request.url) {
             throw new Error('Missing OAuth callback URL');
           }
           const callbackUrl = new URL(request.url, redirectUri);
+          const receivedState = callbackUrl.searchParams.get('state');
+          if (receivedState !== nonce) {
+            throw new Error('OAuth state parameter mismatch');
+          }
           const code = callbackUrl.searchParams.get('code');
           if (!code) {
             throw new Error(callbackUrl.searchParams.get('error') ?? 'OAuth callback missing code');
@@ -91,10 +102,12 @@ export class DriveService {
           await this.saveToken(tokens as StoredToken);
           response.writeHead(200, { 'content-type': 'text/html' });
           response.end('<h1>Drive Offloader connected</h1><p>You can return to the app.</p>');
+          clearTimeout(timeout);
           resolve(await this.getAuthState());
         } catch (error) {
           response.writeHead(500, { 'content-type': 'text/plain' });
           response.end(error instanceof Error ? error.message : 'OAuth failed');
+          clearTimeout(timeout);
           reject(error);
         } finally {
           server.close();
@@ -152,10 +165,11 @@ export class DriveService {
     }
 
     onProgress({ jobId: job.id, status: 'verifying', progressBytes: stats.size, totalBytes: stats.size, message: 'Verifying upload metadata' });
+    const localMd5 = this.md5FromShaPlaceholder(localSha256);
     const verification: VerificationResult = {
       status: Number(driveFile.size ?? 0) === stats.size ? 'verified' : 'failed',
       sizeMatches: Number(driveFile.size ?? 0) === stats.size,
-      hashMatches: driveFile.md5Checksum ? driveFile.md5Checksum === this.md5FromShaPlaceholder(localSha256) : undefined,
+      hashMatches: localMd5 ? driveFile.md5Checksum === localMd5 : undefined,
       localSha256,
       driveMd5: driveFile.md5Checksum ?? undefined,
       checkedAt: new Date().toISOString()
@@ -180,26 +194,41 @@ export class DriveService {
     this.configureClient(config, 'http://127.0.0.1');
     this.oauthClient.setCredentials(token);
     await fs.mkdir(path.dirname(destinationPath), { recursive: true });
-    const response = await gaxiosRequest<NodeJS.ReadableStream>({
-      url: `https://www.googleapis.com/drive/v3/files/${entry.driveFileId}?alt=media`,
-      method: 'GET',
-      responseType: 'stream',
-      headers: { Authorization: `Bearer ${(await this.oauthClient.getAccessToken()).token}` }
-    });
 
-    let bytes = 0;
-    response.data.on('data', (chunk: Buffer) => {
-      bytes += chunk.length;
-      onProgress({ jobId: entry.id, status: 'uploading', progressBytes: bytes, totalBytes: entry.fileSize });
-    });
+    const tempPath = `${destinationPath}.tmp-${entry.id}-${Date.now()}`;
 
-    await new Promise<void>((resolve, reject) => {
-      const output = createWriteStream(destinationPath);
-      response.data.pipe(output);
-      output.on('finish', resolve);
-      output.on('error', reject);
-      response.data.on('error', reject);
-    });
+    try {
+      const response = await gaxiosRequest<NodeJS.ReadableStream>({
+        url: `https://www.googleapis.com/drive/v3/files/${entry.driveFileId}?alt=media`,
+        method: 'GET',
+        responseType: 'stream',
+        headers: { Authorization: `Bearer ${(await this.oauthClient.getAccessToken()).token}` }
+      });
+
+      let bytes = 0;
+      response.data.on('data', (chunk: Buffer) => {
+        bytes += chunk.length;
+        onProgress({ jobId: entry.id, status: 'uploading', progressBytes: bytes, totalBytes: entry.fileSize });
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        const output = createWriteStream(tempPath);
+        response.data.pipe(output);
+        output.on('finish', () => resolve());
+        output.on('error', reject);
+        response.data.on('error', reject);
+      });
+
+      if (bytes !== entry.fileSize) {
+        await fs.unlink(tempPath).catch(() => undefined);
+        throw new Error(`Downloaded ${bytes} bytes but expected ${entry.fileSize} bytes`);
+      }
+
+      await fs.rename(tempPath, destinationPath);
+    } catch (error) {
+      await fs.unlink(tempPath).catch(() => undefined);
+      throw error;
+    }
   }
 
   private getClientConfig(): ClientConfig | undefined {

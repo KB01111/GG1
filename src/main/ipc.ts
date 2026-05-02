@@ -33,7 +33,11 @@ async function collectUploadableFiles(item: FileSystemItem): Promise<FileSystemI
       return;
     }
 
-    const stats = await fs.stat(currentPath);
+    const stats = await fs.lstat(currentPath);
+    if (stats.isSymbolicLink()) {
+      return;
+    }
+
     if (stats.isFile()) {
       files.push({
         id: createStableId(`${currentPath}:${stats.mtimeMs}:${stats.size}`),
@@ -57,6 +61,9 @@ async function collectUploadableFiles(item: FileSystemItem): Promise<FileSystemI
 
     const directory = await fs.opendir(currentPath);
     for await (const entry of directory) {
+      if (entry.isSymbolicLink()) {
+        continue;
+      }
       await walk(path.join(currentPath, entry.name));
     }
   }

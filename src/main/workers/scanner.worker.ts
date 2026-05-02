@@ -67,7 +67,7 @@ async function scanPath(fullPath: string, state: ScanState): Promise<number> {
     state.protectedCount += 1;
     state.skippedCount += 1;
     try {
-      const stats = await fs.stat(fullPath);
+      const stats = await fs.lstat(fullPath);
       state.items.push(toItem(fullPath, stats, stats.isDirectory() ? 'folder' : 'file', stats.isFile() ? stats.size : 0));
     } catch {
       state.items.push({
@@ -88,10 +88,16 @@ async function scanPath(fullPath: string, state: ScanState): Promise<number> {
 
   let stats;
   try {
-    stats = await fs.stat(fullPath);
+    stats = await fs.lstat(fullPath);
   } catch (error) {
     state.skippedCount += 1;
     emitProgress(state, fullPath, 'scanning', error instanceof Error ? error.message : 'Unable to read path');
+    return 0;
+  }
+
+  if (stats.isSymbolicLink()) {
+    state.skippedCount += 1;
+    emitProgress(state, fullPath, 'scanning', 'Symbolic link skipped');
     return 0;
   }
 
@@ -121,6 +127,9 @@ async function scanPath(fullPath: string, state: ScanState): Promise<number> {
   let size = 0;
   let childrenCount = 0;
   for await (const entry of directory) {
+    if (entry.isSymbolicLink()) {
+      continue;
+    }
     childrenCount += 1;
     size += await scanPath(path.join(fullPath, entry.name), state);
     if (state.items.length > request.options.maxItems * 3) {
